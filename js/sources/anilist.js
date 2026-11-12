@@ -4,7 +4,7 @@ import { cacheGet, cacheSet, sleep } from '../util.js';
 const ENDPOINT = 'https://graphql.anilist.co';
 const HOUR = 3600e3;
 
-const FIELDS = `id type format countryOfOrigin isAdult title{romaji english native} synonyms coverImage{extraLarge large color} bannerImage genres averageScore popularity startDate{year} episodes chapters volumes status`;
+const FIELDS = `id type format countryOfOrigin isAdult title{romaji english native} synonyms coverImage{extraLarge large color} bannerImage genres averageScore popularity startDate{year} episodes duration chapters volumes status`;
 
 const FORMAT = {
   TV: 'Série TV', TV_SHORT: 'Format court', MOVIE: 'Film', SPECIAL: 'Spécial', OVA: 'OVA', ONA: 'ONA',
@@ -73,6 +73,8 @@ export function fromAnilist(m) {
     color: m.coverImage?.color || '',
     year: m.startDate?.year || null,
     format,
+    fmt: m.format || '',
+    duration: m.duration || null,
     country: c,
     genres: m.genres || [],
     episodes: m.episodes || null,
@@ -93,10 +95,10 @@ export async function searchAnilist(q, scope, { adult = false, signal } = {}) {
   const page = (alias, extra, n) =>
     `${alias}: Page(perPage: ${n}) { media(search: $s${extra}${adultArg}, sort: SEARCH_MATCH) { ${FIELDS} } }`;
   let body;
-  if (scope === 'anime') body = page('a', ', type: ANIME', 30);
+  if (scope === 'anime') body = page('a', ', type: ANIME', 50);
   else if (scope === 'manga') body = page('a', ', type: MANGA', 36);
   else if (scope === 'manhwa') body = page('a', ', type: MANGA, countryOfOrigin: "KR"', 24) + page('b', ', type: MANGA, countryOfOrigin: "CN"', 12);
-  else body = page('a', ', type: ANIME', 20) + page('b', ', type: MANGA', 24);
+  else body = page('a', ', type: ANIME', 50) + page('b', ', type: MANGA', 30);
   const data = await gql(`query ($s: String) { ${body} }`, { s: q }, { signal });
   return [...list(data.a), ...list(data.b)];
 }
@@ -120,7 +122,7 @@ export async function anilistDetails(id, { signal } = {}) {
   const data = await gql(
     `query ($id: Int) { Media(id: $id) {
       ${FIELDS}
-      description(asHtml: false) duration season seasonYear siteUrl
+      description(asHtml: false) siteUrl
       endDate { year }
       studios(isMain: true) { nodes { name } }
       tags { name rank isMediaSpoiler isGeneralSpoiler }

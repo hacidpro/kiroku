@@ -38,6 +38,40 @@ function withoutDuplicates(primary, extra) {
   return out;
 }
 
+const EXTRA_FORMATS = new Set(['OVA', 'SPECIAL', 'MUSIC', 'ONE_SHOT', 'DOUJIN']);
+
+// Range les résultats pour qu'une recherche ne s'étale pas : la série d'abord, puis les films
+// (du plus ancien au plus récent), et les « à-côtés » (OAV, épisodes spéciaux, clips, one-shots)
+// marqués `extra` pour être repliés à l'affichage.
+// Ne sont jamais repliés : le meilleur résultat de chaque type, un titre identique à la recherche,
+// une vraie série en OAV (6 épisodes et plus) et un à-côté presque aussi suivi que l'œuvre principale.
+function arrange(items, q) {
+  const nq = norm(q);
+  const best = {};
+  const seen = {};
+  for (const m of items) if (m.source === 'anilist') best[broad(m)] = Math.max(best[broad(m)] || 0, m.popularity || 0);
+  for (const m of items) {
+    const type = broad(m);
+    m.lead = !seen[type] || (m.titles || [m.title]).some((t) => norm(t) === nq);
+    seen[type] = true;
+    const shortOna = m.fmt === 'ONA' && m.episodes != null && m.episodes < 6 && !(m.duration >= 40);
+    const ovaSeries = m.fmt === 'OVA' && m.episodes >= 6;
+    const major = m.source === 'anilist' && best[type] > 0 && (m.popularity || 0) >= best[type] * 0.3;
+    m.extra = (EXTRA_FORMATS.has(m.fmt) || shortOna) && !m.lead && !ovaSeries && !major;
+  }
+  // Clé de tri : rang (tête, séries, films, romans), puis année pour les films, puis ordre de pertinence.
+  const key = (m, i) => {
+    if (m.lead) return [0, 0, i];
+    if (m.fmt === 'MOVIE') return [2, m.year || 9999, i];
+    if (m.fmt === 'NOVEL') return [3, 0, i];
+    return [1, 0, i];
+  };
+  return items
+    .map((m, i) => [m, key(m, i)])
+    .sort(([, a], [, b]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2])
+    .map(([m]) => m);
+}
+
 const inScope = (m, scope) => {
   if (scope === 'all') return true;
   if (scope === 'anime') return m.kind === 'anime';
@@ -74,7 +108,7 @@ export async function search(q, scope = 'all', { signal } = {}) {
 
   const main = bySource.anilist.filter((m) => inScope(m, scope));
   const extra = withoutDuplicates(main, bySource.kitsu.filter((m) => inScope(m, scope)));
-  const items = [...main, ...extra, ...bySource.tmdb];
+  const items = arrange([...main, ...extra, ...bySource.tmdb], q);
   remember(items);
 
   if (!items.length && jobs.length && settled.every((r) => r.status === 'rejected')) {

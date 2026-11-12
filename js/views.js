@@ -1,5 +1,5 @@
 // Les pages du site : accueil, catégories, recherche, recommandations.
-import { html, render, icon, $, $$, safeColor, verdict } from './util.js';
+import { html, raw, render, icon, $, $$, safeColor, verdict } from './util.js';
 import { store } from './store.js';
 import { card, row, skeletonRow, skeletonCards, stamp, img, emptyState, tmdbSetup, CATEGORIES, STATUSES, KIND_LABEL, statusLabel, metaLine, genreLine } from './ui.js';
 import { search, remember } from './catalog.js';
@@ -385,26 +385,49 @@ const searchCache = new Map();
 export const cleanScope = (s) => (SCOPES.some((x) => x[0] === s) ? s : 'all');
 export const searchHref = (q, scope) => `#/recherche?${new URLSearchParams({ ...(q ? { q } : {}), scope }).toString()}`;
 
+// Blocs « OAV, spéciaux… » que l'utilisateur a dépliés : on s'en souvient le temps de la visite.
+const openExtras = new Set();
+const EXTRAS_ANIME = 'OAV, épisodes spéciaux & clips';
+const EXTRAS_PRINT = 'One-shots & hors-séries';
+
 function resultsHtml(res, q, scope) {
   const groups =
     scope === 'all'
       ? [
-          ['Anime', (m) => m.kind === 'anime'],
-          ['Manga & light novels', (m) => m.category === 'anime' && m.kind !== 'anime'],
-          ['Manhwa & manhua', (m) => m.category === 'manhwa'],
-          ['K-Drama', (m) => m.category === 'kdrama'],
+          ['Anime', (m) => m.kind === 'anime', EXTRAS_ANIME],
+          ['Manga & light novels', (m) => m.category === 'anime' && m.kind !== 'anime', EXTRAS_PRINT],
+          ['Manhwa & manhua', (m) => m.category === 'manhwa', EXTRAS_PRINT],
+          ['K-Drama', (m) => m.category === 'kdrama', ''],
         ]
-      : [['', () => true]];
+      : [['', () => true, scope === 'anime' ? EXTRAS_ANIME : EXTRAS_PRINT]];
   const blocks = groups
-    .map(([label, test]) => [label, res.items.filter(test)])
+    .map(([label, test, extrasLabel]) => [label, res.items.filter(test), extrasLabel])
     .filter(([, list]) => list.length)
-    .map(
-      ([label, list]) => html`
+    .map(([label, list, extrasLabel], i) => {
+      // La série et ses films restent visibles ; les à-côtés se rangent derrière un bouton,
+      // sauf s'il n'y a rien d'autre à montrer.
+      let main = list.filter((m) => !m.extra);
+      let extras = list.filter((m) => m.extra);
+      if (!main.length) [main, extras] = [extras, []];
+      const id = [scope, q.toLowerCase(), i].join('|');
+      return html`
         <section class="results">
-          ${label ? html`<h2 class="results__title">${label}<i>${list.length}</i></h2>` : ''}
-          <div class="grid">${list.map((m) => card(m))}</div>
-        </section>`,
-    );
+          ${label ? html`<h2 class="results__title">${label}<i>${main.length}</i></h2>` : ''}
+          <div class="grid">${main.map((m) => card(m))}</div>
+          ${extras.length
+            ? html`
+                <details class="extras" data-extras="${id}" ${openExtras.has(id) ? raw('open') : ''}>
+                  <summary class="extras__sum">
+                    <span class="extras__plus">${icon('plus', 16)}</span>
+                    <span class="extras__label">${extrasLabel}</span>
+                    <i>${extras.length}</i>
+                    <span class="extras__hint"><span>Afficher</span><span>Masquer</span></span>
+                  </summary>
+                  <div class="grid">${extras.map((m) => card(m))}</div>
+                </details>`
+            : ''}
+        </section>`;
+    });
   return html`
     ${res.errors.map((e) => errorNote(e))}
     ${res.needsTmdb
@@ -448,6 +471,15 @@ export function renderSearch(root, params) {
       </section>`,
   );
   const body = $('#search-body', root);
+  // « toggle » ne remonte pas : on l'écoute en phase de capture.
+  body.addEventListener(
+    'toggle',
+    (e) => {
+      const id = e.target.dataset?.extras;
+      if (id) openExtras[e.target.open ? 'add' : 'delete'](id);
+    },
+    true,
+  );
 
   if (q.length < 2) {
     render(

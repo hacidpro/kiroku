@@ -5,6 +5,8 @@ const FORMAT = {
   tv: 'Série TV', movie: 'Film', ova: 'OVA', ona: 'ONA', special: 'Spécial', music: 'Clip',
   manga: 'Manga', manhwa: 'Manhwa', manhua: 'Manhua', novel: 'Light novel', oneshot: 'One-shot', doujin: 'Doujin', oel: 'Webcomic',
 };
+// Format ramené à la nomenclature d'AniList, pour trier les résultats de la même façon.
+const FMT = { tv: 'TV', movie: 'MOVIE', ova: 'OVA', ona: 'ONA', special: 'SPECIAL', music: 'MUSIC', oneshot: 'ONE_SHOT', doujin: 'DOUJIN', novel: 'NOVEL' };
 const AIRING = { current: 'En cours', finished: 'Terminé', tba: 'À annoncer', unreleased: 'À venir', upcoming: 'À venir' };
 
 async function get(path, params, { signal } = {}) {
@@ -47,6 +49,8 @@ function fromKitsu(node, included = []) {
     color: '',
     year: a.startDate ? Number(String(a.startDate).slice(0, 4)) || null : null,
     format: FORMAT[sub] || (type === 'anime' ? 'Anime' : 'Manga'),
+    fmt: FMT[sub] || (type === 'anime' ? '' : 'MANGA'),
+    duration: a.episodeLength || null,
     country: '',
     genres: genres.slice(0, 8),
     episodes: a.episodeCount || null,
